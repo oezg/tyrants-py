@@ -1,4 +1,5 @@
 import string_utils
+import player_utils
 
 help_text = 'Placeholder to tell the player what the game is about and how to control the game.'
 
@@ -27,7 +28,7 @@ Are you ready to begin?
 """
 
 
-def new_game(name):
+def new_game(name: str) -> str:
     return new_game_template.format(name=name)
 
 
@@ -43,7 +44,7 @@ hub_template = """
 """
 
 
-def hub(player):
+def hub(player: player_utils.Player) -> str:
     return hub_template.format(
         robots=string_utils.display_robots(player.robots),
         titanium=player.score
@@ -88,7 +89,7 @@ Acquired {titanium} lumps of titanium
 """
 
 
-def deploy(encounter, target):
+def deploy(encounter: bool, target: "Target") -> str:
     return deploy_template.format(
         encounter='\nEnemy encounter' if encounter else '',
         location=target.location,
@@ -117,7 +118,7 @@ purchase_robot = "Purchase successful. You now have an additional robot"
 
 time_format = "%Y-%m-%d %H:%M"
 
-upgrade_prices = {'1': 250, '2': 500, '3': 1000}
+upgrade_prices: dict[str, int] = {'1': 250, '2': 500, '3': 1000}
 
 game_over = """
 Deploying robots...

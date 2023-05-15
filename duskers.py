@@ -1,42 +1,43 @@
-import player_utils
+import json
 import random
+import typing
+
+import player_utils
 import resources
 import string_utils
 import file_utils
-import json
 
 
 class Game:
-    def __init__(self):
+    def __init__(self) -> None:
         self.locations: list[str] = file_utils.parse_arguments()
-        self.player = None
+        self.player: typing.Optional[player_utils.Player] = None
         self.entry()
 
-    def load(self):
-        saved_slots = file_utils.get_saved_slots()
-        load_command = string_utils.get_command(*saved_slots.keys())
-        while load_command != 'back' and saved_slots[load_command] is None:
-            self.player = player_utils.Player()
-            self.hub()
-            # load_command = string_utils.get_command(*saved_slots.keys())
-        if load_command == 'back':
-            self.entry()
-        self.player = player_utils.Player.from_slot(saved_slots[load_command])
-        print(resources.game_loaded)
-        print(f'Welcome back, commander {self.player.name}!')
+    def load(self) -> None:
+        saved_players, load_command = self.get_saved_players()
+        if saved_players[load_command] is not None:
+            self.player = player_utils.Player.load(saved_players[load_command])
+            print(resources.game_loaded)
+            print(f'Welcome back, commander {self.player.name}!')
         self.hub()
 
-    def save(self):
-        saved_slots = file_utils.get_saved_slots()
-        save_command = string_utils.get_command(*saved_slots.keys())
-        if save_command == 'back':
-            self.entry()
-        saved_slots[save_command] = self.player.to_slot()
+    def save(self) -> None:
+        saved_players, save_command = self.get_saved_players()
+        saved_players[save_command] = self.player.save()
         with open('save_file.json', 'w') as json_file:
-            json.dump(saved_slots, json_file, default=lambda slot: slot.__dict__, indent=4)
+            json.dump(saved_players, json_file, default=lambda slot: slot.__dict__, indent=4)
         print(resources.game_saved)
 
-    def play(self):
+    def get_saved_players(self) -> tuple[dict[str, typing.Optional[player_utils.SavedPlayer]], str]:
+        saved_players: dict[str, typing.Optional[player_utils.SavedPlayer]] = file_utils.get_saved_players()
+        save_command: str = string_utils.get_command(*saved_players.keys())
+        if save_command == 'back':
+            self.entry()
+        else:
+            return saved_players, save_command
+
+    def play(self) -> None:
         self.player = player_utils.Player(name=input("Enter your name: "))
         print(resources.new_game(self.player.name))
         while (command := string_utils.get_command('yes', 'no', 'menu')) == 'no':
@@ -47,9 +48,9 @@ class Game:
             case 'menu' | 'back':
                 self.entry()
 
-    def menu(self):
+    def menu(self) -> None:
         print(resources.menu)
-        menu_command = string_utils.get_command('back', 'main', 'save', 'exit')
+        menu_command: str = string_utils.get_command('back', 'main', 'save', 'exit')
         match menu_command:
             case 'back':
                 self.hub()
@@ -61,9 +62,9 @@ class Game:
                 self.save()
                 file_utils.exit_game()
 
-    def hub(self):
+    def hub(self) -> None:
         print(resources.hub(self.player))
-        hub_command = string_utils.get_command('ex', 'up', 'save', 'm')
+        hub_command: str = string_utils.get_command('ex', 'up', 'save', 'm')
         match hub_command:
             case 'm':
                 self.menu()
@@ -77,28 +78,28 @@ class Game:
             case 'back':
                 self.hub()
 
-    def explore(self):
+    def explore(self) -> None:
         class Target:
-            def __init__(self, idx, location):
-                self.idx = str(idx)
-                self.location = location
-                self.titanium = random.randint(10, 100)
-                self.encounter = random.random()
+            def __init__(self, target_index, target_location) -> None:
+                self.idx: str = str(target_index)
+                self.location: str = target_location
+                self.titanium: int = random.randint(10, 100)
+                self.encounter: float = random.random()
 
         if not self.locations:
             print(resources.no_locations.strip())
             string_utils.get_command()
             self.hub()
 
-        targets = []
-        idx = 1
-        number_locations = random.randint(1, 9)
-        searching = True
+        targets: list[Target] = []
+        idx: int = 1
+        number_locations: int = random.randint(1, 9)
+        searching: bool = True
 
         while searching:
-            location = random.choice(self.locations)
+            location: str = random.choice(self.locations)
             targets.append(Target(idx, location))
-            chosen_location = string_utils.choose_location(targets, self.player)
+            chosen_location: str = string_utils.choose_location(targets, self.player)
             if chosen_location == 's' and idx < number_locations:
                 idx += 1
                 continue
@@ -108,7 +109,7 @@ class Game:
                 print(resources.no_locations.strip())
                 chosen_location = string_utils.get_command('s', *(target.idx for target in targets))
             if chosen_location != 'back':
-                target = next(filter(lambda target: target.idx == chosen_location, targets))
+                target: Target = next(filter(lambda target: target.idx == chosen_location, targets))
                 if target.encounter < random.random():
                     self.get_titanium(target)
                 elif self.player.robots == 1:
@@ -118,24 +119,24 @@ class Game:
                     self.player.robots -= 1
             self.hub()
 
-    def game_over(self):
+    def game_over(self) -> None:
         print(resources.game_over.strip())
-        file_utils.update_high(self.player.to_slot())
+        file_utils.update_high(self.player.save())
         self.player = None
         self.entry()
 
-    def get_titanium(self, target, encounter=False):
+    def get_titanium(self, target: "Target", encounter: bool = False) -> None:
         self.player.score += target.titanium
         print(resources.deploy(encounter, target))
 
-    def high(self):
+    def high(self) -> None:
         string_utils.display_high_scores()
         string_utils.get_command()
         self.entry()
 
-    def entry(self):
+    def entry(self) -> None:
         print(resources.entry)
-        entry_command = string_utils.get_command('new', 'load', 'high', 'help', 'exit')
+        entry_command: str = string_utils.get_command('new', 'load', 'high', 'help', 'exit')
         match entry_command:
             case 'exit':
                 file_utils.exit_game()
@@ -150,12 +151,12 @@ class Game:
             case 'back':
                 self.entry()
 
-    def upgrade(self):
+    def upgrade(self) -> None:
         print(resources.upgrade_store)
         self.upgrade_loop()
 
-    def upgrade_loop(self):
-        upgrade_command = string_utils.get_command('1', '2', '3')
+    def upgrade_loop(self) -> None:
+        upgrade_command: str = string_utils.get_command('1', '2', '3')
         if upgrade_command == 'back':
             self.hub()
         else:
@@ -176,7 +177,7 @@ class Game:
                         print(resources.purchase_robot)
                 self.hub()
 
-    def help(self):
+    def help(self) -> None:
         print(resources.help_text)
         self.entry()
 
