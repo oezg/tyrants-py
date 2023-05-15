@@ -1,210 +1,185 @@
-import argparse
+import player_utils
 import random
-import sys
-
-entry_string = """+=====================================================================+
-     ████████╗██╗░░░██╗██████╗░░█████╗░███╗░░██╗████████╗░██████╗
-     ╚══██╔══╝╚██╗░██╔╝██╔══██╗██╔══██╗████╗░██║╚══██╔══╝██╔════╝
-     ░░░██║░░░░╚████╔╝░██████╔╝███████║██╔██╗██║░░░██║░░░╚█████╗░
-     ░░░██║░░░░░╚██╔╝░░██╔══██╗██╔══██║██║╚████║░░░██║░░░░╚═══██╗
-     ░░░██║░░░░░░██║░░░██║░░██║██║░░██║██║░╚███║░░░██║░░░██████╔╝
-     ░░░╚═╝░░░░░░╚═╝░░░╚═╝░░╚═╝╚═╝░░╚═╝╚═╝░░╚══╝░░░╚═╝░░░╚═════╝░
-+=====================================================================+
-
-[New]  Game
-[Load] Game
-[High] Scores
-[Help]
-[Exit]
-"""
-
-hub_string = """+==============================================================================+
-  $   $$$$$$$   $  |  $   $$$$$$$   $  |  $   $$$$$$$   $
-  $$$$$     $$$$$  |  $$$$$     $$$$$  |  $$$$$     $$$$$
-      $$$$$$$      |      $$$$$$$      |      $$$$$$$
-     $$$   $$$     |     $$$   $$$     |     $$$   $$$
-     $       $     |     $       $     |     $       $
-+==============================================================================+
-| Titanium: {}                                                                  |
-+==============================================================================+
-|                  [Ex]plore                          [Up]grade                |
-|                  [Save]                             [M]enu                   |
-+==============================================================================+"""
-
-menu_string = """
-                          |==========================|
-                          |            MENU          |
-                          |                          |
-                          | [Back] to game           |
-                          | Return to [Main] Menu    |
-                          | [Save] and exit          |
-                          | [Exit] game              |
-                          |==========================|
-"""
-
-robot_string = """
-  $   $$$$$$$   $  
-  $$$$$     $$$$$  
-      $$$$$$$      
-     $$$   $$$     
-     $       $     
-"""
-
-deploying_string = """Deploying robots
-{0} explored successfully, with no damage taken.
-Acquired {1} lumps of titanium"""
+import resources
+import string_utils
+import file_utils
+import json
 
 
-class Tyrants:
-    def __init__(self, locations):
-        self.locations: list[str] = locations
-        self.titanium = 0
-
-    def run(self):
+class Game:
+    def __init__(self):
+        self.locations: list[str] = file_utils.parse_arguments()
+        self.player = None
         self.entry()
 
+    def load(self):
+        saved_slots = file_utils.get_saved_slots()
+        load_command = string_utils.get_command(*saved_slots.keys())
+        while load_command != 'back' and saved_slots[load_command] is None:
+            self.player = player_utils.Player()
+            self.hub()
+            # load_command = string_utils.get_command(*saved_slots.keys())
+        if load_command == 'back':
+            self.entry()
+        self.player = player_utils.Player.from_slot(saved_slots[load_command])
+        print(resources.game_loaded)
+        print(f'Welcome back, commander {self.player.name}!')
+        self.hub()
+
+    def save(self):
+        saved_slots = file_utils.get_saved_slots()
+        save_command = string_utils.get_command(*saved_slots.keys())
+        if save_command == 'back':
+            self.entry()
+        saved_slots[save_command] = self.player.to_slot()
+        with open('save_file.json', 'w') as json_file:
+            json.dump(saved_slots, json_file, default=lambda slot: slot.__dict__, indent=4)
+        print(resources.game_saved)
+
     def play(self):
-        name = input("Enter your name:\n")
-        print(f"Greetings, commander {name}!")
-        while True:
-            print("Are you ready to begin?")
-            print("[Yes] [No] Return to Main[Menu]")
-            command = self.get_command('yes', 'no', 'menu')
-            match command:
-                case 'yes':
-                    self.hub()
-                case 'no':
-                    print('\nHow about now.')
-                case 'menu':
-                    self.entry()
-                    break
+        self.player = player_utils.Player(name=input("Enter your name: "))
+        print(resources.new_game(self.player.name))
+        while (command := string_utils.get_command('yes', 'no', 'menu')) == 'no':
+            print('How about now.')
+        match command:
+            case 'yes':
+                self.hub()
+            case 'menu' | 'back':
+                self.entry()
 
     def menu(self):
-        print(menu_string)
-        menu_command = self.get_command('back', 'main', 'save', 'exit')
+        print(resources.menu)
+        menu_command = string_utils.get_command('back', 'main', 'save', 'exit')
         match menu_command:
             case 'back':
                 self.hub()
             case 'main':
                 self.entry()
             case 'exit':
-                exit_game()
+                file_utils.exit_game()
             case 'save':
-                not_implemented()
+                self.save()
+                file_utils.exit_game()
 
     def hub(self):
-        print(hub_string.format(self.titanium))
-        hub_command = self.get_command('ex', 'up', 'save', 'm')
+        print(resources.hub(self.player))
+        hub_command = string_utils.get_command('ex', 'up', 'save', 'm')
         match hub_command:
             case 'm':
                 self.menu()
             case 'ex':
                 self.explore()
-            case _:
-                not_implemented()
+            case 'save':
+                self.save()
+                self.hub()
+            case 'up':
+                self.upgrade()
+            case 'back':
+                self.hub()
 
     def explore(self):
-        if not self.locations:
-            print('Nothing more in sight.')
-            print('       [Back]')
-            self.get_command()
+        class Target:
+            def __init__(self, idx, location):
+                self.idx = str(idx)
+                self.location = location
+                self.titanium = random.randint(10, 100)
+                self.encounter = random.random()
 
-        data = {}
+        if not self.locations:
+            print(resources.no_locations.strip())
+            string_utils.get_command()
+            self.hub()
+
+        targets = []
         idx = 1
         number_locations = random.randint(1, 9)
-        finished = False
+        searching = True
 
-        while not finished:
+        while searching:
             location = random.choice(self.locations)
-            titanium = random.randint(10, 100)
-            data[idx] = {
-                'location': location,
-                'titanium': titanium,
-            }
-            chosen_location = self.choose_location(data)
+            targets.append(Target(idx, location))
+            chosen_location = string_utils.choose_location(targets, self.player)
             if chosen_location == 's' and idx < number_locations:
                 idx += 1
                 continue
+            searching = False
 
             while chosen_location == 's':
-                print('Nothing more in sight.')
-                print('       [Back]')
-                chosen_location = self.get_command('s', *map(str, data.keys()))
-
-            target = data[int(chosen_location)]
-            print(deploying_string.format(
-                target['location'],
-                target['titanium'],
-            ))
-            self.titanium += target['titanium']
-            # self.locations.remove(target['location'])
-            finished = True
+                print(resources.no_locations.strip())
+                chosen_location = string_utils.get_command('s', *(target.idx for target in targets))
+            if chosen_location != 'back':
+                target = next(filter(lambda target: target.idx == chosen_location, targets))
+                if target.encounter < random.random():
+                    self.get_titanium(target)
+                elif self.player.robots == 1:
+                    self.game_over()
+                else:
+                    self.get_titanium(target, True)
+                    self.player.robots -= 1
             self.hub()
 
+    def game_over(self):
+        print(resources.game_over.strip())
+        file_utils.update_high(self.player.to_slot())
+        self.player = None
+        self.entry()
+
+    def get_titanium(self, target, encounter=False):
+        self.player.score += target.titanium
+        print(resources.deploy(encounter, target))
+
     def high(self):
-        print('No scores to display.')
-        print('        [Back]')
-        self.get_command(back_to_hub=False)
+        string_utils.display_high_scores()
+        string_utils.get_command()
+        self.entry()
 
     def entry(self):
-        print(entry_string)
-        entry_command = self.get_command('play', 'high', 'help', 'exit')
+        print(resources.entry)
+        entry_command = string_utils.get_command('new', 'load', 'high', 'help', 'exit')
         match entry_command:
             case 'exit':
-                exit_game()
-            case 'play':
+                file_utils.exit_game()
+            case 'new':
                 self.play()
+            case 'load':
+                self.load()
             case 'high':
                 self.high()
             case 'help':
-                not_implemented()
+                self.help()
+            case 'back':
+                self.entry()
 
-    def choose_location(self, data):
-        print("Searching")
-        for key, value in data.items():
-            print(f"[{key}] {value['location']}")
-        print("\n[S] to continue searching")
-        return self.get_command('s', *map(str, data.keys()))
+    def upgrade(self):
+        print(resources.upgrade_store)
+        self.upgrade_loop()
 
-    def get_command(self, *options, back_to_hub=True):
-        while True:
-            t = input("Your command: ").lower()
-            if t == 'back':
-                self.hub() if back_to_hub else self.entry()
-            if t in options:
-                return t
-            print('Invalid input', end='')
+    def upgrade_loop(self):
+        upgrade_command = string_utils.get_command('1', '2', '3')
+        if upgrade_command == 'back':
+            self.hub()
+        else:
+            if self.player.score < resources.upgrade_prices[upgrade_command]:
+                print('Not enough titanium!')
+                self.upgrade_loop()
+            else:
+                self.player.score -= resources.upgrade_prices[upgrade_command]
+                match upgrade_command:
+                    case '1':
+                        self.player.scan_titanium = True
+                        print(resources.purchase_titanium)
+                    case '2':
+                        self.player.scan_enemy = True
+                        print(resources.purchase_enemy)
+                    case '3':
+                        self.player.robots += 1
+                        print(resources.purchase_robot)
+                self.hub()
 
-
-def exit_game():
-    print('Thanks for playing, bye!')
-    sys.exit(0)
-
-
-def not_implemented():
-    print('Coming SOON! Thanks for playing!')
-    sys.exit(0)
-
-
-def parse():
-    parser = argparse.ArgumentParser()
-    parser.add_argument('seed')
-    parser.add_argument('start')
-    parser.add_argument('end')
-    parser.add_argument('locations')
-    return parser.parse_args()
-
-
-def main():
-    args = parse()
-    random.seed(args.seed)
-    locations = split_commas(args.locations)
-    Tyrants(locations).run()
-
-
-def split_commas(text):
-    return text.replace('_', ' ').split(',')
+    def help(self):
+        print(resources.help_text)
+        self.entry()
 
 
 if __name__ == '__main__':
-    main()
+    Game()
